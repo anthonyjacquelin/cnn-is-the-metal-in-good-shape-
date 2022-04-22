@@ -1,0 +1,2 @@
+Les 50 premières variables détiennent + de 90% de l'information
+- Economie de 974 variables sur 1024 (qui n'apportent que 10% de l'information)
