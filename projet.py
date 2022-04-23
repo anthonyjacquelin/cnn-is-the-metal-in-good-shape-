@@ -63,8 +63,6 @@ def load_images_from_path():
     test_images_loaded = np.array([cv2.resize(img, (32, 32)).flatten()
                                    for img in test_images_loaded])
 
-    print(test_images_loaded.shape)
-    print(train_images_loaded.shape)
     return all_images, test_images_loaded, train_images_loaded, test_labels, train_labels, train_dataset, test_dataset
 
 
@@ -78,33 +76,21 @@ def random_forest():
         all_images, test_images_loaded, train_images_loaded, test_labels, train_labels, train_dataset, test_dataset = load_images_from_path()
     else:
         # load dataset from npy file
+        # if the dataset file doesnt exist, skip this step
         all_images, test_images_loaded, train_images_loaded, test_labels, train_labels, train_dataset, test_dataset = load_images_from_path()
-        all_images_loaded = np.load("pca_transformed_data.npy")
-        print("taille all_images_loaded: ", len(all_images_loaded))
-        train_images_loaded = np.array(all_images_loaded[:1000])
-        test_images_loaded = np.array(all_images_loaded[-100:])
+        try:
+            all_images_loaded = np.load("pca_transformed_data.npy")
 
-    # create the random forest classifier
-
-    # print("len test: ", len(test_images_loaded))
-    # print("len train: ", len(train_images_loaded))
-
-    # get first 1000 images for training
-    # train_images_loaded = train_images_loaded[:1000]
-
-    # get last 100 images for testing
-    # test_images_loaded = test_images_loaded[-100:]
+            print("taille all_images_loaded: ", len(all_images_loaded))
+            train_images_loaded = np.array(all_images_loaded[:1000])
+            test_images_loaded = np.array(all_images_loaded[-100:])
+        except Exception:
+            print("The dataset file doesnt exist, loading the dataset without PCA")
 
     # Create a RandomForestClassifier with 100 trees
     rf = RandomForestClassifier(
         n_estimators=100,
         max_depth=100)
-
-    print("test_images_loaded: ", train_images_loaded)
-    print("test_images_loaded: ", test_images_loaded)
-
-    print("nb labels: ", len(train_labels))
-    print("nb train images: ", len(train_images_loaded))
 
     # fit the random forest classifier on the training dataset
     rf.fit(train_images_loaded, train_labels)
@@ -124,8 +110,44 @@ def random_forest():
         test_labels, predictions), sklearn.metrics.accuracy_score(
         test_labels, predictions)]
 
-    # print the scores
-    print("scores: ", scores)
+    false_negatives_count = sum(
+        predictions[i] == 0 and test_labels[i] == 1 for i in range(len(test_images_loaded)))
+
+    false_positives_count = sum(
+        predictions[i] == 1 and test_labels[i] == 0 for i in range(len(test_images_loaded)))
+
+    true_negatives_count = sum(  # true negatives
+        predictions[i] == 0 and test_labels[i] == 0 for i in range(len(test_images_loaded)))
+
+    true_positives_count = sum(  # true positives
+        predictions[i] == 1 and test_labels[i] == 1 for i in range(len(test_images_loaded)))
+
+    # create dataframe with the metrics
+    # print the dataframe
+    metrics = pd.DataFrame(columns=['False negatives', 'False positives',
+                                    'True negatives', 'True positives'])
+    metrics.loc[0] = [false_negatives_count, false_positives_count,
+                      true_negatives_count, true_positives_count]
+    print("scores: \n", scores)
+    print(metrics)
+
+    # comme le modèle sans ACP est le plus performant
+    # on autorise la prédiction d'une image que si l'ACP
+    # n'est pas faite
+    if default == "y":
+        # resize the image
+        image_to_test = test_images_loaded[0]
+        image_to_test = image_to_test[5]
+        image = cv2.resize(test_images_loaded[0], (32, 32))
+        # flatten the image
+        image = image.flatten()
+        # predict the label of the image
+        prediction = rf.predict(np.array([image]))
+        # plot the image, the predictions of the image and the correct label
+        plt.imshow(test_images_loaded[0].reshape(32, 32), cmap='gray')
+        plt.title("Prediction: " +
+                  str(prediction[0]) + " Correct label: " + str(test_labels[0]))
+        plt.show()
 
 
 # create a convolutional neural network with 4 convolution layers, 1 pooling layer and 1 fully connected layer
@@ -190,8 +212,6 @@ def create_model():
         plt.legend(loc='lower right')
         plt.show()
 
-        print("history keys: ", history.history.keys())
-
         # Try the model on the test dataset
         test_loss, test_acc, MSE = model.evaluate(
             test_images_loaded,  test_labels, verbose=2)
@@ -200,6 +220,7 @@ def create_model():
         df = pd.DataFrame(
             columns=['test_loss', 'test_acc', 'MSE'])
         df.loc[0] = [test_loss, test_acc, MSE]
+
         print(df)
 
         # save the model trained to disk for later use
@@ -208,10 +229,6 @@ def create_model():
 
         # predict the label of the given image
         predict(test_images_loaded[0])
-
-# Appliquer une Analyse des Composantes Principales
-# afin de garder que les caractéristiques pertinentes. Interpréter les résultats
-# pour déterminer les caractéristiques les plus significatives.
 
 
 # make a principal component analysis on the images
@@ -230,9 +247,7 @@ def pca_analysis_with_plot():
     all_images_loaded = np.array([cv2.resize(img, (32, 32)).flatten()
                                   for img in all_images_loaded])
 
-    print("Final reshape: ", all_images_loaded.shape)
-
-    pca = PCA()  # we need 2 principal components.
+    pca = PCA() 
     converted_data = pca.fit_transform(all_images_loaded)
 
     plt.style.use('seaborn-whitegrid')
@@ -255,8 +270,7 @@ def pca_analysis_with_plot():
     plt.ylabel('Cumulative Explained Variance')
     plt.show()
 
-    # keep only the first 2 principal components
-    pca = PCA(svd_solver='full', n_components=2)
+    pca = PCA(svd_solver='full', n_components=0.95)
     pca.fit_transform(all_images_loaded)
     all_images_loaded = pca.transform(all_images_loaded)
     # save the transformed data after pca
@@ -270,9 +284,7 @@ def pca_analysis_with_plot():
 def predict(image):
     model = tf.keras.models.load_model("metal_prediction.h5")
     prediction = model.predict(image.reshape(1, 32, 32, 1))
-
-    print("Prediction: ", np.argmax(prediction))
-
+    
     plt.imshow(image)
     plt.title("Prediction of the given image")
     plt.xlabel("Prediction: " + str(np.argmax(prediction)))
@@ -282,7 +294,7 @@ def predict(image):
 def main():
     pca_analysis_with_plot()
     random_forest()
-    create_model()
+    # create_model()
 
 
 main()
